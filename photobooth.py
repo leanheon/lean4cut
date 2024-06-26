@@ -5,6 +5,7 @@ import cv2
 import requests
 import os
 import numpy as np
+import time
 
 class PhotoBoothApp:
     def __init__(self, window, window_title):
@@ -26,17 +27,24 @@ class PhotoBoothApp:
         self.selected_photos = []
         
         self.frame_colors = [
-            ("#000000", "Black"),
-            ("#FFFFFF", "White"),
-            ("#FF0000", "Red"),
-            ("#00FF00", "Green"),
-            ("#0000FF", "Blue"),
-            ("#FFFF00", "Yellow"),
-            ("#FF00FF", "Magenta"),
-            ("#00FFFF", "Cyan")
+            ("#151515", "Black"),
+            ("#EEEDEB", "White"),
+            ("#686D76", "Gray"),
+            ("#658147", "Green"),
+            ("#667BC6", "Blue"),
+            ("#FCDC94", "Yellow"),
+            ("#FFB1B1", "Pink"),
+            ("#102C57", "Indigo")
         ]
         self.frame_color = self.frame_colors[0][0]  # Default to black
         self.frame_sets = None
+
+        self.frame_order = [0, 0, 1, 1, 2, 2, 3, 3]  # New frame order: 1 1 2 2 3 3 4 4
+
+        self.is_taking_photo = False
+        self.timer_running = False
+        self.flash_duration = 500  # milliseconds
+        self.timer_id = None  # To store the timer event ID
 
         self.download_anton_font()
         self.create_frame_selection_page()
@@ -119,10 +127,10 @@ class PhotoBoothApp:
         button_frame = ttk.Frame(self.window)
         button_frame.pack(pady=20)
 
-        self.btn_snapshot = ttk.Button(button_frame, text="Take Picture", command=self.snapshot)
+        self.btn_snapshot = ttk.Button(button_frame, text="Take Picture", command=self.manual_snapshot)
         self.btn_snapshot.pack(side=tk.LEFT, padx=10)
 
-        self.photo_count_label = ttk.Label(button_frame, text="Photos: 0/8")
+        self.photo_count_label = ttk.Label(button_frame, text="Photos: 1/8")
         self.photo_count_label.pack(side=tk.LEFT, padx=10)
 
         self.timer_label = ttk.Label(button_frame, text="")
@@ -133,38 +141,61 @@ class PhotoBoothApp:
         self.start_timer()
 
     def start_timer(self):
-        self.countdown(5)
+        if not self.timer_running and len(self.photos) < 8:
+            self.timer_running = True
+            self.countdown(5)
 
     def countdown(self, count):
-        if count > 0 and len(self.photos) < 8:
+        if self.timer_id:  # Cancel any existing timer
+            self.window.after_cancel(self.timer_id)
+        
+        if count > 0 and len(self.photos) < 8 and self.timer_running:
             self.timer_label.config(text=f"Next photo in: {count}")
-            self.window.after(1000, self.countdown, count - 1)
-        elif len(self.photos) < 8:
-            self.snapshot()
+            self.timer_id = self.window.after(1000, self.countdown, count - 1)
+        elif len(self.photos) < 8 and self.timer_running:
+            self.auto_snapshot()
 
-    def snapshot(self):
+    def manual_snapshot(self):
+        if not self.is_taking_photo:
+            self.is_taking_photo = True
+            self.timer_running = False
+            if self.timer_id:
+                self.window.after_cancel(self.timer_id)
+            self.timer_label.config(text="")
+            self.take_photo()
+
+    def auto_snapshot(self):
+        if not self.is_taking_photo:
+            self.is_taking_photo = True
+            self.take_photo()
+
+    def take_photo(self):
         ret, frame = self.vid.read()
         if ret:
             frame = cv2.flip(frame, 1)  # Mirror the image
             photo = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             
             if self.frame_sets:
-                frame_index = (len(self.photos) // 2) % 4  # Take each frame twice
+                frame_index = self.frame_order[len(self.photos)]
                 photo = Image.alpha_composite(photo.convert('RGBA'), self.frame_sets[frame_index].resize(photo.size))
             
             self.photos.append(photo)
             
             # Flash effect
             self.canvas.config(bg="white")
-            self.window.after(100, lambda: self.canvas.config(bg="black"))
-            
-            self.photo_count_label.config(text=f"Photos: {len(self.photos)}/8")
-            
-            if len(self.photos) >= 8:
-                self.vid.release()
-                self.create_photo_selection_page()
-            else:
-                self.start_timer()
+            self.window.after(self.flash_duration, self.end_photo_capture)
+
+    def end_photo_capture(self):
+        self.canvas.config(bg="black")
+        self.photo_count_label.config(text=f"Photo: {len(self.photos) + 1}/8")
+        
+        if len(self.photos) >= 8:
+            self.vid.release()
+            self.create_photo_selection_page()
+        else:
+            self.is_taking_photo = False
+            self.timer_running = False
+            self.start_timer()
 
     def update(self):
         ret, frame = self.vid.read()
@@ -173,7 +204,7 @@ class PhotoBoothApp:
             
             # Overlay frame if selected
             if self.frame_sets:
-                frame_index = (len(self.photos) // 2) % 4  # Show each frame twice
+                frame_index = self.frame_order[len(self.photos)]
                 frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA))
                 overlay = self.frame_sets[frame_index].resize(frame_pil.size)
                 frame_with_overlay = Image.alpha_composite(frame_pil, overlay)
@@ -302,5 +333,5 @@ class PhotoBoothApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = PhotoBoothApp(root, "MELA4CUT Photo Booth")
+    app = PhotoBoothApp(root, "LEAN4CUT Photo Booth")
     root.mainloop()
