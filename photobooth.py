@@ -253,7 +253,7 @@ class PhotoBoothApp:
         self.preview_canvas = tk.Canvas(right_frame, width=300, height=450, bg="white", highlightthickness=1)
         self.preview_canvas.pack(pady=10)
 
-        self.btn_create_strip = ttk.Button(right_frame, text="Create Photo Strip", command=self.create_strip)
+        self.btn_create_strip = ttk.Button(right_frame, text="import", command=self.create_strip)
         self.btn_create_strip.pack(pady=10)
 
         self.update_preview()
