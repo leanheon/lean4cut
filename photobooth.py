@@ -1,4 +1,5 @@
 import tkinter as tk
+import datetime
 from tkinter import ttk, messagebox, filedialog
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 import cv2
@@ -23,23 +24,23 @@ class PhotoBoothApp:
         self.video_source = 0
         self.vid = None
         
+        self.frame_order = [0, 0, 1, 1, 2, 2, 3, 3]  # Frame order: 1 1 2 2 3 3 4 4
+
         self.photos = []
         self.selected_photos = []
         
         self.frame_colors = [
-            ("#151515", "Black"),
-            ("#EEEDEB", "White"),
-            ("#686D76", "Gray"),
-            ("#658147", "Green"),
-            ("#667BC6", "Blue"),
-            ("#FCDC94", "Yellow"),
-            ("#FFB1B1", "Pink"),
-            ("#102C57", "Indigo")
+            ("#000000", "Black"),
+            ("#FFFFFF", "White"),
+            ("#FF0000", "Red"),
+            ("#00FF00", "Green"),
+            ("#0000FF", "Blue"),
+            ("#FFFF00", "Yellow"),
+            ("#FF00FF", "Magenta"),
+            ("#00FFFF", "Cyan")
         ]
         self.frame_color = self.frame_colors[0][0]  # Default to black
         self.frame_sets = None
-
-        self.frame_order = [0, 0, 1, 1, 2, 2, 3, 3]  # New frame order: 1 1 2 2 3 3 4 4
 
         self.is_taking_photo = False
         self.timer_running = False
@@ -102,18 +103,15 @@ class PhotoBoothApp:
                 btn.image = photo
                 btn.grid(row=i//4, column=i%4, padx=10, pady=10)
 
-        next_button = ttk.Button(self.window, text="Next", command=self.create_photo_capture_page)
-        next_button.pack(pady=20)
-
     def set_frame_set(self, frame_set):
         if frame_set is None:
             self.frame_sets = None
-            messagebox.showinfo("Info", "No frame selected.")
         else:
             frame_set_path = os.path.join("frames", frame_set)
             frames = [f for f in os.listdir(frame_set_path) if f.lower().endswith(('.png', '.jpg', '.jpeg')) and f != "icon.png"]
             self.frame_sets = [Image.open(os.path.join(frame_set_path, f)).convert('RGBA') for f in sorted(frames)[:4]]
-            messagebox.showinfo("Info", f"Frame set '{frame_set}' selected.")
+        
+        self.create_photo_capture_page()
 
     def create_photo_capture_page(self):
         self.clear_window()
@@ -143,7 +141,7 @@ class PhotoBoothApp:
     def start_timer(self):
         if not self.timer_running and len(self.photos) < 8:
             self.timer_running = True
-            self.countdown(5)
+            self.countdown(8)
 
     def countdown(self, count):
         if self.timer_id:  # Cancel any existing timer
@@ -175,9 +173,14 @@ class PhotoBoothApp:
             frame = cv2.flip(frame, 1)  # Mirror the image
             photo = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             
+            # Resize photo to maintain aspect ratio
+            target_size = (600, 400)  # 2:3 aspect ratio
+            photo.thumbnail(target_size, Image.LANCZOS)
+            
             if self.frame_sets:
                 frame_index = self.frame_order[len(self.photos)]
-                photo = Image.alpha_composite(photo.convert('RGBA'), self.frame_sets[frame_index].resize(photo.size))
+                frame_image = self.frame_sets[frame_index].resize(photo.size, Image.LANCZOS)
+                photo = Image.alpha_composite(photo.convert('RGBA'), frame_image)
             
             self.photos.append(photo)
             
@@ -187,7 +190,7 @@ class PhotoBoothApp:
 
     def end_photo_capture(self):
         self.canvas.config(bg="black")
-        self.photo_count_label.config(text=f"Photo: {len(self.photos) + 1}/8")
+        self.photo_count_label.config(text=f"Photo: {len(self.photos)+1}/8")
         
         if len(self.photos) >= 8:
             self.vid.release()
@@ -202,11 +205,17 @@ class PhotoBoothApp:
         if ret:
             frame = cv2.flip(frame, 1)  # Mirror the image
             
+            # Resize frame to maintain aspect ratio
+            height, width = frame.shape[:2]
+            target_width = 640
+            target_height = int(target_width * height / width)
+            frame = cv2.resize(frame, (target_width, target_height))
+            
             # Overlay frame if selected
             if self.frame_sets:
                 frame_index = self.frame_order[len(self.photos)]
                 frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA))
-                overlay = self.frame_sets[frame_index].resize(frame_pil.size)
+                overlay = self.frame_sets[frame_index].resize(frame_pil.size, Image.LANCZOS)
                 frame_with_overlay = Image.alpha_composite(frame_pil, overlay)
                 frame = cv2.cvtColor(np.array(frame_with_overlay), cv2.COLOR_RGBA2BGR)
             
@@ -236,7 +245,7 @@ class PhotoBoothApp:
 
         self.photo_buttons = []
         for i, photo in enumerate(self.photos):
-            img = ImageTk.PhotoImage(photo.resize((150, 112), Image.LANCZOS))
+            img = ImageTk.PhotoImage(photo.resize((150, 100), Image.LANCZOS))
             btn = ttk.Button(self.photo_frame, image=img, command=lambda idx=i: self.toggle_selection(idx))
             btn.image = img
             btn.grid(row=i//4, column=i%4, padx=5, pady=5)
@@ -253,7 +262,7 @@ class PhotoBoothApp:
         self.preview_canvas = tk.Canvas(right_frame, width=300, height=450, bg="white", highlightthickness=1)
         self.preview_canvas.pack(pady=10)
 
-        self.btn_create_strip = ttk.Button(right_frame, text="import", command=self.create_strip)
+        self.btn_create_strip = ttk.Button(right_frame, text="Create Photo Strip", command=self.create_strip)
         self.btn_create_strip.pack(pady=10)
 
         self.update_preview()
@@ -289,11 +298,22 @@ class PhotoBoothApp:
         if len(self.selected_photos) != 4:
             messagebox.showwarning("Warning", "Please select exactly 4 pictures.")
             return
-
+    
+    # Get the current date and time
+        now = datetime.datetime.now()
+    
+    # Create a new folder for the result
+        result_folder = os.path.join(os.getcwd(), 'result')
+        if not os.path.exists(result_folder):
+            os.mkdir(result_folder)
+    
+    # Save each photo as a PNG file with the current date and time
         strip = self.create_photo_strip()
-        strip.save("photo_strip.png", 'PNG')
-        messagebox.showinfo("Success", "Photo strip saved as photo_strip.png")
-        self.window.quit()
+        strip.save(os.path.join(result_folder, f'{now:%Y%m%d-%H%M%S}.png'), 'PNG')
+    
+    # Display a message box with the success of the operation
+        messagebox.showinfo("Success", "Photos saved as PNG files in the result folder.")
+        self.restart_program()
 
     def create_photo_strip(self, preview=False):
         strip_width = 2 * 300  # 2 inches at 300 DPI
@@ -314,8 +334,14 @@ class PhotoBoothApp:
         for i, idx in enumerate(self.selected_photos):
             y = top_margin + i * (photo_height + photo_interval)
             
-            pic = self.photos[idx].resize((photo_width, photo_height), Image.LANCZOS)
-            photo_strip.paste(pic, (side_margin, y))
+            pic = self.photos[idx].copy()
+            pic.thumbnail((photo_width, photo_height), Image.LANCZOS)
+            
+            # Calculate position to center the photo
+            x_offset = (photo_width - pic.width) // 2 + side_margin
+            y_offset = y + (photo_height - pic.height) // 2
+            
+            photo_strip.paste(pic, (x_offset, y_offset))
 
         try:
             font = ImageFont.truetype("Anton-Regular.ttf", 72)
@@ -327,9 +353,16 @@ class PhotoBoothApp:
                   fill='white', font=font, anchor="ms", stroke_width=3, stroke_fill='black')
 
         if preview:
-            photo_strip.thumbnail((300, 450))
+            photo_strip.thumbnail((300, 450), Image.LANCZOS)
 
         return photo_strip
+
+def restart_program(self):
+        self.vid.release()
+        self.window.destroy()
+        root = tk.Tk()
+        app = PhotoBoothApp(root, "LEAN4CUT Photo Booth")
+        root.mainloop()
 
 if __name__ == "__main__":
     root = tk.Tk()
