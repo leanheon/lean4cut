@@ -7,6 +7,7 @@ import requests
 import os
 import numpy as np
 import time
+import qrcode
 
 class PhotoBoothApp:
     def __init__(self, window, window_title):
@@ -141,7 +142,7 @@ class PhotoBoothApp:
     def start_timer(self):
         if not self.timer_running and len(self.photos) < 8:
             self.timer_running = True
-            self.countdown(8)
+            self.countdown(4)
 
     def countdown(self, count):
         if self.timer_id:  # Cancel any existing timer
@@ -245,7 +246,7 @@ class PhotoBoothApp:
 
         self.photo_buttons = []
         for i, photo in enumerate(self.photos):
-            img = ImageTk.PhotoImage(photo.resize((150, 100), Image.LANCZOS))
+            img = ImageTk.PhotoImage(photo.resize((150, 112), Image.LANCZOS))
             btn = ttk.Button(self.photo_frame, image=img, command=lambda idx=i: self.toggle_selection(idx))
             btn.image = img
             btn.grid(row=i//4, column=i%4, padx=5, pady=5)
@@ -308,12 +309,13 @@ class PhotoBoothApp:
             os.mkdir(result_folder)
     
     # Save each photo as a PNG file with the current date and time
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         strip = self.create_photo_strip()
-        strip.save(os.path.join(result_folder, f'{now:%Y%m%d-%H%M%S}.png'), 'PNG')
+        strip.save(os.path.join(result_folder, f'{timestamp}.png'), 'PNG')
     
     # Display a message box with the success of the operation
         messagebox.showinfo("Success", "Photos saved as PNG files in the result folder.")
-        self.restart_program()
+        self.show_qr_code_page(os.path.join(result_folder, f'{timestamp}.png'))
 
     def create_photo_strip(self, preview=False):
         strip_width = 2 * 300  # 2 inches at 300 DPI
@@ -357,12 +359,39 @@ class PhotoBoothApp:
 
         return photo_strip
 
-def restart_program(self):
-        self.vid.release()
-        self.window.destroy()
-        root = tk.Tk()
-        app = PhotoBoothApp(root, "LEAN4CUT Photo Booth")
-        root.mainloop()
+    def show_qr_code_page(self, file_path):
+        self.clear_window()  # Clear the existing window content
+
+    # Generate the QR code
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(file_path)
+        qr.make(fit=True)
+    
+        qr_img = qr.make_image(fill='black', back_color='white')
+        qr_img = qr_img.resize((300, 300), Image.LANCZOS)  # Use Image.LANCZOS here
+        qr_photo = ImageTk.PhotoImage(qr_img)
+
+    # Create a label to display the QR code
+        qr_label = ttk.Label(self.window, image=qr_photo)
+        qr_label.image = qr_photo  # Keep a reference to avoid garbage collection
+        qr_label.pack(pady=20)
+
+    # Add a label with instructions
+        instructions = ttk.Label(self.window, text="Scan this QR code to download your photo strip.")
+        instructions.pack(pady=20)
+
+    # Add a button to return to the main page
+        back_button = ttk.Button(self.window, text="Back to Main Page", command=self.restart_program)
+        back_button.pack(pady=20)
+
+    def clear_window(self):
+        for widget in self.window.winfo_children():
+            widget.destroy()
 
 if __name__ == "__main__":
     root = tk.Tk()
