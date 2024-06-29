@@ -142,7 +142,7 @@ class PhotoBoothApp:
     def start_timer(self):
         if not self.timer_running and len(self.photos) < 8:
             self.timer_running = True
-            self.countdown(4)
+            self.countdown(8)
 
     def countdown(self, count):
         if self.timer_id:  # Cancel any existing timer
